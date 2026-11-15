@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Camera,CameraOff,ShieldAlert} from 'lucide-react';
 import {api} from './api';
 type Detection={box:number[];recognized:boolean;person_id:number|null;name:string};
-type Activity={name:string;person_id:number|null;recognized:boolean;timestamp:string;status:string};
+type Activity={id:number;name:string;person_id:number|null;recognized:boolean;timestamp:string;status:string};
 export default function GateMonitor(){
   const video=useRef<HTMLVideoElement>(null);
   const overlay=useRef<HTMLCanvasElement>(null);
@@ -13,6 +13,8 @@ export default function GateMonitor(){
   const [detections,setDetections]=useState<Detection[]>([]);
   const [activity,setActivity]=useState<Activity[]>([]);
   const [count,setCount]=useState(0);
+  const [acknowledged,setAcknowledged]=useState<number[]>([]);
+  const [showAll,setShowAll]=useState(true);
   function stop(){
     stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;
     if(video.current)video.current.srcObject=null;
@@ -82,8 +84,10 @@ export default function GateMonitor(){
       <p className="camera-disclaimer">Advisory identification only. No liveness check, physical passage verification or automatic gate action. Recognition may be inaccurate.</p>
     </section>
     <aside className="panel monitor-activity"><h2>Live recognition activity</h2><p className="empty">Updates while the camera is running</p>
-      {activity.map((a,i)=><div className="monitor-activity-row" key={a.timestamp+'-'+i}><span className={a.recognized?'monitor-dot ok':'monitor-dot warn'}/><div><b>{a.name}</b><small>{a.recognized?'Possible match':'Unknown · review'} · {new Date(a.timestamp).toLocaleTimeString()}</small></div></div>)}
+      <div className="monitor-feed-controls"><label><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)}/> Show recognized</label><button className="secondary" onClick={()=>setAcknowledged(activity.filter(a=>!a.recognized).map(a=>a.id))}>Acknowledge alerts</button></div>
+      {activity.filter(a=>showAll||!a.recognized).map(a=><div className="monitor-activity-row" key={a.id}><span className={a.recognized?'monitor-dot ok':acknowledged.includes(a.id)?'monitor-dot ack':'monitor-dot warn'}/><div><b>{a.name}</b><small>{a.recognized?'Possible match':acknowledged.includes(a.id)?'Alert acknowledged locally':'Unknown · review'} · {new Date(a.timestamp).toLocaleTimeString()}</small></div></div>)}
       {!activity.length&&<p className="empty">No detections yet.</p>}
+      <p className="camera-disclaimer">Acknowledgements are local to this browser session and are not a permanent audit trail.</p>
     </aside>
   </div>;
 }
