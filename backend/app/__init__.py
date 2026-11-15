@@ -23,6 +23,14 @@ def create_app(test_config=None):
     CORS(app, resources={r"/api/*": {"origins": os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")}})
     from .models import Person, Gate, AccessEvent, AccessPermission
     from .access_policy import evaluate_access
+    from .face_engine import FaceStore, decode_image, extract_faces
+    from collections import deque
+    import time
+    from threading import Lock
+    vision_store = FaceStore(os.getenv('SMART_GATE_FACE_DIR', os.path.join(app.instance_path, 'face_templates')))
+    vision_log = deque(maxlen=50)
+    vision_lock = Lock()
+    last_seen = {}
     with app.app_context():
         db.create_all()
 
@@ -185,5 +193,68 @@ def create_app(test_config=None):
                        eligible=bool(person.status == "active" and gate.enabled and permission),
                        identity_verification_required=True,
                        gate_action="none")
+
+
+    @app.get("/api/vision/enrollments")
+    def vision_enrollments():
+        return jsonify(person_ids=vision_store.enrolled_ids())
+
+    @app.post("/api/vision/enroll")
+    def vision_enroll():
+        data = request.get_json(silent=True) or {}
+        pid = data.get("person_id")
+        if type(pid) is not int or not data.get("consent_confirmed") is True:
+            return jsonify(error="Valid person_id and explicit consent required"), 400
+        person = db.session.get(Person, pid)
+        if person is None:
+            return jsonify(error="person not found"), 404
+        try:
+            faces = extract_faces(decode_image(data.get("image")))
+            if len(faces) != 1:
+                return jsonify(error="Enrollment requires exactly one clearly visible face"), 422
+            vision_store.enroll(pid, faces[0][1])
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 422
+        return jsonify(person_id=pid, enrolled=True), 201
+
+    @app.delete("/api/vision/enroll/<int:person_id>")
+    def vision_delete(person_id):
+        vision_store.delete(person_id)
+        return "", 204
+
+    @app.post("/api/vision/recognize")
+    def vision_recognize():
+        data = request.get_json(silent=True) or {}
+        try:
+            faces = extract_faces(decode_image(data.get("image")))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 422
+        detections = []
+        now = time.monotonic()
+        for box, crop in faces[:12]:
+            match = vision_store.match(crop)
+            person = db.session.get(Person, match["person_id"]) if match["person_id"] is not None else None
+            recognized = bool(person and person.status == "active")
+            pid = person.id if recognized else None
+            item = {"box":list(box), "recognized":recognized, "person_id":pid,
+                    "name":person.full_name if recognized else "Unknown person",
+                    "unverified":True}
+            detections.append(item)
+            key = f"person:{pid}" if recognized else "unknown"
+            # Debounce events. Multiple unknown faces in one frame are not unique identities.
+            with vision_lock:
+                if now-last_seen.get(key, -1000) >= 8:
+                    last_seen[key] = now
+                    vision_log.appendleft({"name":item["name"],"person_id":pid,
+                                           "recognized":recognized,
+                                           "timestamp":datetime.now(timezone.utc).isoformat(),
+                                           "status":"recognized_candidate" if recognized else "unknown_alert"})
+        return jsonify(detections=detections, face_count=len(faces), gate_action="none",
+                       warning="Recognition is advisory only; no gate control or identity verification")
+
+    @app.get("/api/vision/activity")
+    def vision_activity():
+        with vision_lock:
+            return jsonify(list(vision_log))
 
     return app
