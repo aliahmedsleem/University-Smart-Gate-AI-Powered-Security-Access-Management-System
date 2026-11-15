@@ -198,7 +198,7 @@ def create_app(test_config=None):
 
     @app.get("/api/vision/enrollments")
     def vision_enrollments():
-        return jsonify(person_ids=vision_store.enrolled_ids())
+        return jsonify(person_ids=vision_store.enrolled_ids(),sample_counts=vision_store.sample_counts())
 
     @app.post("/api/vision/enroll")
     def vision_enroll():
@@ -210,10 +210,16 @@ def create_app(test_config=None):
         if person is None:
             return jsonify(error="person not found"), 404
         try:
-            faces = extract_faces(decode_image(data.get("image")))
-            if len(faces) != 1:
-                return jsonify(error="Enrollment requires exactly one clearly visible face"), 422
-            vision_store.enroll(pid, faces[0][1])
+            images = data.get("images") if isinstance(data.get("images"), list) else [data.get("image")]
+            if not 1 <= len(images) <= 5:
+                return jsonify(error="Provide 1 to 5 face captures"), 422
+            samples = []
+            for image in images:
+                faces = extract_faces(decode_image(image))
+                if len(faces) != 1:
+                    return jsonify(error="Each enrollment capture requires exactly one visible face"), 422
+                samples.append(faces[0][1])
+            vision_store.enroll_many(pid, samples)
         except ValueError as exc:
             return jsonify(error=str(exc)), 422
         return jsonify(person_id=pid, enrolled=True), 201
