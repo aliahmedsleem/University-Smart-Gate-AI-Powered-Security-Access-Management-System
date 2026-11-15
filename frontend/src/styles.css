@@ -9,3 +9,7 @@
 .camera-live-label{position:absolute;top:14px;left:14px;background:#233b5bd9;color:#71e4ae;border-radius:6px;padding:7px 10px;font-size:12px;letter-spacing:.6px}
 .camera-error{color:#f8a7a7}
 .camera-disclaimer{display:flex;align-items:center;gap:9px;color:#9fb2ca;font-size:13px;line-height:1.6}
+
+.consent-row{display:flex;align-items:flex-start;gap:12px;margin:16px 0;color:#d7e2f2;line-height:1.6}
+.consent-row input{width:18px;height:18px;flex-shrink:0;margin-top:4px;accent-color:#ddb36b}
+.camera-controls button:disabled{opacity:.45;cursor:not-allowed}
