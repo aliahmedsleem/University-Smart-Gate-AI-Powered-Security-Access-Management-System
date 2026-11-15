@@ -18,3 +18,10 @@
 .audit-toolbar select{min-width:145px;max-width:100%;background:#0d1b2f;border:1px solid #364c68;color:#f2f6fb;border-radius:8px;padding:10px}
 .audit-download{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;background:#ddb36b;color:#142032;text-decoration:none;font-weight:700}
 @media(max-width:640px){.audit-toolbar select,.audit-download{flex:1 1 100%}}
+
+.login-screen{min-height:100vh;display:grid;place-items:center;padding:24px;background:#0b1524}
+.login-panel{width:min(100%,440px);display:flex;flex-direction:column;gap:16px;padding:32px}
+.login-panel input{width:100%;padding:13px;border:1px solid #405473;background:#0d1b2f;color:#f5f7fa;border-radius:9px}
+.login-panel button{padding:12px;border-radius:9px;background:#ddb36b;color:#142032;font-weight:700}
+.login-panel p,.login-panel small{color:#aebed3;line-height:1.6}
+.login-panel [role=alert]{color:#f8a7a7}
