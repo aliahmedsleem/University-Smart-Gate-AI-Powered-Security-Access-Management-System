@@ -17,6 +17,8 @@ def create_app(test_config=None):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     if test_config:
         app.config.update(test_config)
+    from .auth import install_api_guard
+    install_api_guard(app)
     db.init_app(app)
     CORS(app, resources={r"/api/*": {"origins": os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")}})
     from .models import Person, Gate, AccessEvent, AccessPermission
