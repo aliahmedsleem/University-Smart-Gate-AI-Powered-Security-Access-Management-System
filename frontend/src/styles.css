@@ -13,3 +13,8 @@
 .consent-row{display:flex;align-items:flex-start;gap:12px;margin:16px 0;color:#d7e2f2;line-height:1.6}
 .consent-row input{width:18px;height:18px;flex-shrink:0;margin-top:4px;accent-color:#ddb36b}
 .camera-controls button:disabled{opacity:.45;cursor:not-allowed}
+
+.audit-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0}
+.audit-toolbar select{min-width:145px;max-width:100%;background:#0d1b2f;border:1px solid #364c68;color:#f2f6fb;border-radius:8px;padding:10px}
+.audit-download{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;background:#ddb36b;color:#142032;text-decoration:none;font-weight:700}
+@media(max-width:640px){.audit-toolbar select,.audit-download{flex:1 1 100%}}
