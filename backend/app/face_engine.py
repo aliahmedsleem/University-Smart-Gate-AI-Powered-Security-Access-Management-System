@@ -65,7 +65,7 @@ class FaceStore:
             if pid in self._faces:
                 raise ValueError("Person already enrolled; delete enrollment before replacement")
             match=self.match(face)
-            if match["person_id"] is not None and match["confidence"]<65:
+            if match["confidence"] is not None and match["confidence"]<65:
                 raise ValueError("Face resembles an existing enrollment; manual review required")
             path=self.root/f"{pid}.npy"
             with path.open("wb") as file:
