@@ -17,7 +17,8 @@ def create_app(test_config=None):
         app.config.update(test_config)
     db.init_app(app)
     CORS(app, resources={r"/api/*": {"origins": os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")}})
-    from .models import Person, Gate, AccessEvent
+    from .models import Person, Gate, AccessEvent, AccessPermission
+    from .access_policy import evaluate_access
     with app.app_context():
         db.create_all()
 
@@ -89,5 +90,57 @@ def create_app(test_config=None):
         db.session.add(event)
         db.session.commit()
         return jsonify(event.to_dict()), 201
+
+
+    @app.get("/api/permissions")
+    def list_permissions():
+        return jsonify([p.to_dict() for p in AccessPermission.query.order_by(AccessPermission.id.desc()).all()])
+
+    @app.post("/api/permissions")
+    def assign_permission():
+        data = request.get_json(silent=True) or {}
+        pid, gid = data.get("person_id"), data.get("gate_id")
+        if type(pid) is not int or type(gid) is not int:
+            return jsonify(error="person_id and gate_id must be integers"), 400
+        if not db.session.get(Person, pid) or not db.session.get(Gate, gid):
+            return jsonify(error="person or gate not found"), 404
+        existing = AccessPermission.query.filter_by(person_id=pid, gate_id=gid).first()
+        if existing:
+            return jsonify(error="permission already exists"), 409
+        permission = AccessPermission(person_id=pid, gate_id=gid, enabled=True)
+        db.session.add(permission)
+        db.session.commit()
+        return jsonify(permission.to_dict()), 201
+
+    @app.delete("/api/permissions/<int:permission_id>")
+    def revoke_permission(permission_id):
+        permission = db.session.get(AccessPermission, permission_id)
+        if not permission:
+            return jsonify(error="permission not found"), 404
+        db.session.delete(permission)
+        db.session.commit()
+        return "", 204
+
+    @app.post("/api/access/check")
+    def check_access():
+        """Operator-assisted policy preview, not biometric verification or gate control."""
+        data = request.get_json(silent=True) or {}
+        pid, gid = data.get("person_id"), data.get("gate_id")
+        if type(pid) is not int or type(gid) is not int:
+            return jsonify(error="person_id and gate_id must be integers"), 400
+        person, gate = db.session.get(Person, pid), db.session.get(Gate, gid)
+        if not person or not gate:
+            return jsonify(error="person or gate not found"), 404
+        permission = AccessPermission.query.filter_by(person_id=pid, gate_id=gid, enabled=True).first()
+        # Never accept identity_verified from the client as proof of identity.
+        # This endpoint returns eligibility only; human identity verification remains required.
+        decision = evaluate_access(
+            identity_verified=False, person_active=person.status == "active",
+            gate_enabled=gate.enabled, has_permission=permission is not None
+        )
+        return jsonify(allowed=decision.allowed, reason=decision.reason,
+                       eligible=bool(person.status == "active" and gate.enabled and permission),
+                       identity_verification_required=True,
+                       gate_action="none")
 
     return app
