@@ -1,16 +1,10 @@
 import {useEffect,useState} from 'react';
 import {ShieldCheck,Trash2} from 'lucide-react';
+import {api} from './api';
 type Person={id:number;full_name:string;university_id:string};
 type Gate={id:number;name:string};
 type Permission={id:number;person_id:number;gate_id:number;enabled:boolean};
 type Check={allowed:boolean;eligible:boolean;reason:string;identity_verification_required:boolean;gate_action:string};
-async function api<T>(path:string,method='GET',body?:object):Promise<T>{
-  const res=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
-  if(res.status===204)return undefined as T;
-  const result=await res.json();
-  if(!res.ok)throw new Error(result.error||'Request failed');
-  return result as T;
-}
 export default function Permissions({people,gates}:{people:Person[];gates:Gate[]}){
   const [items,setItems]=useState<Permission[]>([]);
   const [personId,setPersonId]=useState('');
@@ -21,16 +15,16 @@ export default function Permissions({people,gates}:{people:Person[];gates:Gate[]
   useEffect(()=>{void refresh();},[]);
   async function add(){
     try{
-      await api('/permissions','POST',{person_id:Number(personId),gate_id:Number(gateId)});
+      await api('/permissions',{method:'POST',body:JSON.stringify({person_id:Number(personId),gate_id:Number(gateId)})});
       setNotice('Gate permission assigned');await refresh();
     }catch(e){setNotice(String(e));}
   }
   async function remove(id:number){
-    try{await api('/permissions/'+id,'DELETE');setNotice('Permission revoked');setResult(null);await refresh();}
+    try{await api('/permissions/'+id,{method:'DELETE'});setNotice('Permission revoked');setResult(null);await refresh();}
     catch(e){setNotice(String(e));}
   }
   async function check(){
-    try{setResult(await api<Check>('/access/check','POST',{person_id:Number(personId),gate_id:Number(gateId)}));}
+    try{setResult(await api<Check>('/access/check',{method:'POST',body:JSON.stringify({person_id:Number(personId),gate_id:Number(gateId)})}));}
     catch(e){setNotice(String(e));}
   }
   return <><section className="panel"><h2>Gate access permissions</h2>
