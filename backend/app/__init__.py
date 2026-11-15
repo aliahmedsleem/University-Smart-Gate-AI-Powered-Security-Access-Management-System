@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timezone
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
+import csv
+import io
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 
@@ -74,9 +76,48 @@ def create_app(test_config=None):
         db.session.commit()
         return jsonify(gate.to_dict()), 201
 
+    def filtered_events():
+        query = AccessEvent.query
+        for field in ("person_id", "gate_id"):
+            raw = request.args.get(field)
+            if raw is not None:
+                if not raw.isdecimal() or int(raw) <= 0:
+                    return None
+                query = query.filter(getattr(AccessEvent, field) == int(raw))
+        direction = request.args.get("direction")
+        if direction is not None:
+            if direction not in ("entry", "exit"):
+                return None
+            query = query.filter(AccessEvent.direction == direction)
+        return query
+
     @app.get("/api/events")
     def list_events():
-        return jsonify([e.to_dict() for e in AccessEvent.query.order_by(AccessEvent.id.desc()).limit(100).all()])
+        query = filtered_events()
+        if query is None:
+            return jsonify(error="invalid event filter"), 400
+        raw_limit = request.args.get("limit", "100")
+        if not raw_limit.isdecimal() or not 1 <= int(raw_limit) <= 500:
+            return jsonify(error="limit must be between 1 and 500"), 400
+        return jsonify([e.to_dict() for e in query.order_by(AccessEvent.id.desc()).limit(int(raw_limit)).all()])
+
+    @app.get("/api/events/export.csv")
+    def export_events():
+        """Prototype operator CSV export, capped to avoid unbounded memory use."""
+        query = filtered_events()
+        if query is None:
+            return jsonify(error="invalid event filter"), 400
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(("id", "created_at", "person_id", "gate_id", "direction", "decision", "source"))
+        for event in query.order_by(AccessEvent.id.desc()).limit(5000).all():
+            # Keep exported fields formula-safe for spreadsheet viewers.
+            values = (event.id, event.created_at.isoformat(), event.person_id,
+                      event.gate_id, event.direction, event.decision, event.source)
+            writer.writerow([("'" + v) if isinstance(v, str) and v.startswith(("=", "+", "-", "@")) else v for v in values])
+        return Response(output.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="access-events.csv"',
+                                 "Cache-Control": "no-store"})
 
     @app.post("/api/events")
     def record_event():
