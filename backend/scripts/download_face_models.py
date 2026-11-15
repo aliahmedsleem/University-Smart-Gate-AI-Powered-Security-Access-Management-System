@@ -1,33 +1,41 @@
-"""Download pretrained OpenCV Zoo ONNX models for local SFace inference.
-
-Review model license and provenance before deploying with real biometric data.
-"""
+"""Download the real OpenCV Zoo ONNX weights (not Git LFS pointer files)."""
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 import shutil
 
 root=Path(__file__).resolve().parents[1]/"models"
 root.mkdir(parents=True,exist_ok=True)
-base="https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/"
 names={
     "face_detection_yunet_2023mar.onnx":"face_detection_yunet",
     "face_recognition_sface_2021dec.onnx":"face_recognition_sface",
 }
+base="https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models"
+
+def valid_model(path):
+    if not path.is_file() or path.stat().st_size<100_000:
+        return False
+    with path.open("rb") as handle:
+        return not handle.read(64).startswith(b"version https://git-lfs.github.com/spec/v1")
+
 for filename,folder in names.items():
     target=root/filename
-    if target.exists() and target.stat().st_size>100_000:
-        print("Exists:",target)
+    if valid_model(target):
+        print("Exists:",target,"(",target.stat().st_size,"bytes)")
         continue
-    url=f"{base}{folder}/{filename}"
-    print("Downloading",filename)
+    url=f"{base}/{folder}/{filename}"
+    print("Downloading actual model:",filename)
     tmp=target.with_suffix(".download")
     try:
-        with urlopen(url,timeout=45) as response, tmp.open("wb") as out:
+        request=Request(url,headers={"User-Agent":"UniversitySmartGate-ModelDownloader/1.0"})
+        with urlopen(request,timeout=120) as response, tmp.open("wb") as out:
             shutil.copyfileobj(response,out)
-        if tmp.stat().st_size<100_000:
-            raise RuntimeError("Downloaded file too small; check Git LFS pointer")
+        if not valid_model(tmp):
+            raise RuntimeError(f"Invalid ONNX model or Git LFS pointer received: {filename} ({tmp.stat().st_size} bytes)")
         tmp.replace(target)
+    except (URLError,OSError) as exc:
+        raise RuntimeError(f"Failed to download {filename}: {exc}") from exc
     finally:
         tmp.unlink(missing_ok=True)
-    print("Ready:",target)
-print("Restart backend after download; reference photos must be re-imported for SFace.")
+    print("Ready:",target,"(",target.stat().st_size,"bytes)")
+print("Models downloaded. Restart backend and confirm recognition engine is sface.")
