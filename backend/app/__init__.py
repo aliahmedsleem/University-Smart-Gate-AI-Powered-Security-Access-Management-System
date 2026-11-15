@@ -29,6 +29,7 @@ def create_app(test_config=None):
     from threading import Lock
     vision_store = FaceStore(os.getenv('SMART_GATE_FACE_DIR', os.path.join(app.instance_path, 'face_templates')))
     vision_log = deque(maxlen=50)
+    vision_seq = 0
     vision_lock = Lock()
     last_seen = {}
     with app.app_context():
@@ -224,6 +225,9 @@ def create_app(test_config=None):
 
     @app.post("/api/vision/recognize")
     def vision_recognize():
+        nonlocal vision_seq
+        if request.content_length and request.content_length > 3_000_000:
+            return jsonify(error="Frame too large"), 413
         data = request.get_json(silent=True) or {}
         try:
             faces = extract_faces(decode_image(data.get("image")))
@@ -241,11 +245,12 @@ def create_app(test_config=None):
                     "unverified":True}
             detections.append(item)
             key = f"person:{pid}" if recognized else "unknown"
-            # Debounce events. Multiple unknown faces in one frame are not unique identities.
+            # Throttle repeated observations; unknown faces cannot be individually identified.
             with vision_lock:
                 if now-last_seen.get(key, -1000) >= 8:
                     last_seen[key] = now
-                    vision_log.appendleft({"name":item["name"],"person_id":pid,
+                    vision_seq += 1
+                    vision_log.appendleft({"id":vision_seq,"name":item["name"],"person_id":pid,
                                            "recognized":recognized,
                                            "timestamp":datetime.now(timezone.utc).isoformat(),
                                            "status":"recognized_candidate" if recognized else "unknown_alert"})
