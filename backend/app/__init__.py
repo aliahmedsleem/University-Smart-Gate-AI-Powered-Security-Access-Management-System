@@ -28,6 +28,8 @@ def create_app(test_config=None):
     import time
     from threading import Lock
     vision_store = FaceStore(os.getenv('SMART_GATE_FACE_DIR', os.path.join(app.instance_path, 'face_templates')))
+    from .embedding_engine import EmbeddingEngine, DETECTOR, RECOGNIZER
+    embedding_store = EmbeddingEngine(os.getenv('SMART_GATE_FACE_DIR', os.path.join(app.instance_path, 'face_templates'))) if DETECTOR.is_file() and RECOGNIZER.is_file() else None
     vision_log = deque(maxlen=50)
     vision_seq = 0
     vision_lock = Lock()
@@ -198,7 +200,7 @@ def create_app(test_config=None):
 
     @app.get("/api/vision/enrollments")
     def vision_enrollments():
-        return jsonify(person_ids=vision_store.enrolled_ids(),sample_counts=vision_store.sample_counts())
+        return jsonify(person_ids=embedding_store.enrolled_ids() if embedding_store else vision_store.enrolled_ids(),sample_counts=embedding_store.sample_counts() if embedding_store else vision_store.sample_counts(),engine="sface" if embedding_store else "legacy_lbph",ready=embedding_store is not None)
 
     @app.post("/api/vision/enroll")
     def vision_enroll():
@@ -210,6 +212,9 @@ def create_app(test_config=None):
         if person is None:
             return jsonify(error="person not found"), 404
         try:
+            if embedding_store is not None:
+                embedding_store.enroll(pid, decode_image(data.get("image")))
+                return jsonify(person_id=pid,enrolled=True,engine="sface"),201
             images = data.get("images") if isinstance(data.get("images"), list) else [data.get("image")]
             if not 1 <= len(images) <= 5:
                 return jsonify(error="Provide 1 to 5 face captures"), 422
@@ -227,6 +232,8 @@ def create_app(test_config=None):
     @app.delete("/api/vision/enroll/<int:person_id>")
     def vision_delete(person_id):
         vision_store.delete(person_id)
+        if embedding_store is not None:
+            embedding_store.delete(person_id)
         return "", 204
 
     @app.post("/api/vision/recognize")
@@ -236,13 +243,15 @@ def create_app(test_config=None):
             return jsonify(error="Frame too large"), 413
         data = request.get_json(silent=True) or {}
         try:
-            faces = extract_faces(decode_image(data.get("image")))
+            frame = decode_image(data.get("image"))
+            faces = [] if embedding_store else extract_faces(frame)
         except ValueError as exc:
             return jsonify(error=str(exc)), 422
         detections = []
         now = time.monotonic()
-        for box, crop in faces[:12]:
-            match = vision_store.match(crop)
+        matches = embedding_store.recognize(frame) if embedding_store else [{"box":list(box),**vision_store.match(crop)} for box,crop in faces[:12]]
+        for match in matches:
+            box = match["box"]
             person = db.session.get(Person, match["person_id"]) if match["person_id"] is not None else None
             recognized = bool(person and person.status == "active")
             pid = person.id if recognized else None
@@ -260,7 +269,7 @@ def create_app(test_config=None):
                                            "recognized":recognized,
                                            "timestamp":datetime.now(timezone.utc).isoformat(),
                                            "status":"recognized_candidate" if recognized else "unknown_alert"})
-        return jsonify(detections=detections, face_count=len(faces), gate_action="none",
+        return jsonify(detections=detections, face_count=len(matches),engine="sface" if embedding_store else "legacy_lbph", gate_action="none",
                        warning="Recognition is advisory only; no gate control or identity verification")
 
     @app.get("/api/vision/activity")
