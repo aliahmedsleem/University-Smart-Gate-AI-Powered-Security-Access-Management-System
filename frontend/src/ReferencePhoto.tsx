@@ -9,7 +9,8 @@ export default function ReferencePhoto({people}:{people:Person[]}){
   const [saved,setSaved]=useState<number[]>([]);
   const [message,setMessage]=useState('');
   const [busy,setBusy]=useState(false);
-  const refresh=async()=>{try{const d=await api<{person_ids:number[]}>('/vision/enrollments');setSaved(d.person_ids);}catch(e){setMessage(String(e));}};
+  const [engine,setEngine]=useState('checking');
+  const refresh=async()=>{try{const d=await api<{person_ids:number[];engine:string}>('/vision/enrollments');setSaved(d.person_ids);setEngine(d.engine);}catch(e){setMessage(String(e));}};
   useEffect(()=>{void refresh();},[]);
   async function submit(){
     if(!file||!personId||!consent||busy)return;
@@ -38,6 +39,7 @@ export default function ReferencePhoto({people}:{people:Person[]}){
   }
   return <section className="panel">
     <h2>Reference photo — one image per person</h2>
+    <p role="status">Recognition engine: <b>{engine}</b>. {engine!=='sface'?'Install pretrained models with backend/scripts/download_face_models.py and restart the backend. Legacy LBPH is unreliable across poses.':'Pretrained SFace is active; accuracy must still be validated.'}</p>
     <p className="empty">No multi-angle capture or camera enrollment needed. Upload one authorized JPEG from a university record; the backend extracts one face and stores a local template, not the original photo. A frontal reference photo is recommended.</p>
     <div className="form">
       <select aria-label="Select person for reference photo" value={personId} onChange={e=>{setPersonId(e.target.value);setMessage('');}}>
@@ -50,6 +52,6 @@ export default function ReferencePhoto({people}:{people:Person[]}){
     </div>
     <label className="consent-row"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I confirm the university has appropriate authorization and informed consent for biometric processing of this photo.</label>
     {message&&<p role="status">{message}</p>}
-    <p className="camera-disclaimer">One-photo recognition uses the existing experimental LBPH engine. It does not learn hidden 3D face geometry or reliably recognize every angle. No automatic gate control or autonomous identity updates.</p>
+    <p className="camera-disclaimer">SFace is used when installed; otherwise legacy LBPH remains. Neither can infer hidden 3D geometry or guarantee recognition from every angle. No automatic gate control or autonomous identity updates.</p>
   </section>;
 }
