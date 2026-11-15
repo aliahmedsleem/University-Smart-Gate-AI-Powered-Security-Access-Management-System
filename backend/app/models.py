@@ -39,3 +39,17 @@ class AccessEvent(db.Model):
             "direction": self.direction, "decision": self.decision, "source": self.source,
             "created_at": self.created_at.isoformat(),
         }
+
+
+class AccessPermission(db.Model):
+    """Explicit gate assignment. Does not authorize physical gate activation."""
+    __tablename__ = "access_permissions"
+    id = db.Column(db.Integer, primary_key=True)
+    person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=False, index=True)
+    gate_id = db.Column(db.Integer, db.ForeignKey("gates.id"), nullable=False, index=True)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    __table_args__ = (db.UniqueConstraint("person_id", "gate_id", name="uq_person_gate"),)
+
+    def to_dict(self):
+        return {"id": self.id, "person_id": self.person_id, "gate_id": self.gate_id, "enabled": self.enabled}
